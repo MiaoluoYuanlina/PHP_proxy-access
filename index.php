@@ -11,12 +11,33 @@ $whitelistedDomains = [
 ];
 
 // 日志文件路径
-$logFile = __DIR__ . '/access_log.txt';
+$logFile = __DIR__ . '/access_log.json';
 
 // 默认 Referer
 $defaultReferer = 'https://www.google.com';
 
+// 获取用户的 IP 地址
+function getUserIP() {
+    if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $ip = $_SERVER['HTTP_X_FORWARDED_FOR'];
+    } elseif (isset($_SERVER['HTTP_CLIENT_IP'])) {
+        $ip = $_SERVER['HTTP_CLIENT_IP'];
+    } else {
+        $ip = $_SERVER['REMOTE_ADDR'];
+    }
+    return $ip;
+}
 
+// 获取用户的地理位置信息
+function getUserLocation($ip) {
+    $url = "http://ipinfo.io/{$ip}/json";
+    $locationData = @file_get_contents($url);
+    if ($locationData !== false) {
+        $locationInfo = json_decode($locationData, true);
+        return $locationInfo;
+    }
+    return null;
+}
 
 // 函数：将字节数转换为合适的单位
 function formatFileSize($bytes) {
@@ -98,19 +119,45 @@ if (isset($_GET['fileUrl'])) {
         $status = 'Blocked';
         echo '你请求的URL不在白名单。';
         $fileSize = 0; // 被阻止的请求流量为 0
-        
     }
+
+    // 获取用户 IP 地址
+    $userIP = getUserIP();
+
+    // 获取用户位置信息
+    $locationInfo = getUserLocation($userIP);
+    $location = $locationInfo ? "{$locationInfo['city']}, {$locationInfo['region']}, {$locationInfo['country']}" : '未知位置';
+
     // 格式化文件大小
     $formattedSize = formatFileSize($fileSize);
-    // 记录访问的链接和状态到日志文件
-    $logEntry = date('Y-m-d H:i:s') . " - 请求访问的 URL: " . $fileUrl . " - 现状: " . $status . " - 消耗流量: " . $formattedSize . PHP_EOL;
-    file_put_contents($logFile, $logEntry, FILE_APPEND);
+
+    // 准备日志数据
+    $logData = [
+        'timestamp' => date('Y-m-d H:i:s'),
+        'ip_address' => $userIP,
+        'location' => $location,
+        'url_requested' => $fileUrl,
+        'status' => $status,
+        'data_transferred' => $formattedSize
+    ];
+
+    // 读取现有日志文件内容
+    $currentLog = [];
+    if (file_exists($logFile)) {
+        $currentLog = json_decode(file_get_contents($logFile), true);
+    }
+
+    // 添加新日志
+    $currentLog[] = $logData;
+
+    // 保存日志文件
+    file_put_contents($logFile, json_encode($currentLog, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 } else {
     echo "<span style='color: #FF5733;'> 请使用 “fileUrl ”参数提供文件 URL。 </span><br>"; 
     echo "<br><span style='color: #00FF7F;'> 如: </span>"; 
-    echo "<br><span style='color: #00EE00;'> https://api.xiaomiao-ica.top/agent/text.php<span style='color: #00CD00;'>?fileUrl=<span style='color: #7B68EE;'>链接<span style='color: #00CD00;'>&referer=<span style='color: #7B68EE;'>referer链接头字段 </span></span></span></span></span>"; 
+    echo "<br><span style='color: #00EE00;'> https://api.xiaomiao-ica.top/agent/index.php<span style='color: #00CD00;'>?fileUrl=<span style='color: #7B68EE;'>链接<span style='color: #00CD00;'>&referer=<span style='color: #7B68EE;'>referer链接头字段 </span></span></span></span></span>"; 
     echo "<br><span style='color: #FF1493;'> 如果我要访问Pixiv的图，不提供referer会拒绝访问。pixiv储存图片的地址是 i.pximg.net 我们直接请求他他会拒绝访问，pixiv的主域名是 www.pixiv.net </span>";  
     echo "<br><span style='color: #FF1493;'> 如果我们请求的链接是https://i.pximg.net/img-original/img/2023/10/19/00/00/22/112660921_p0.jpg i.pximg.net的域名就都可以设置 https://www.pixiv.net 为referer</span>";  
-    echo "<br><span style='color: #00EE00;'> https://api.xiaomiao-ica.top/agent/text.php<span style='color: #00CD00;'>?fileUrl=<span style='color: #7B68EE;'>https://i.pximg.net/img-original/img/2023/10/19/00/00/22/112660921_p0.jpg<span style='color: #00CD00;'>&referer=<span style='color: #7B68EE;'>https://www.pixiv.net </span></span></span></span></span>"; 
+    echo "<br><span style='color: #00EE00;'> https://api.xiaomiao-ica.top/agent/index.php<span style='color: #00CD00;'>?fileUrl=<span style='color: #7B68EE;'>https://i.pximg.net/img-original/img/2023/10/19/00/00/22/112660921_p0.jpg<span style='color: #00CD00;'>&referer=<span style='color: #7B68EE;'>https://www.pixiv.net </span></span></span></span></span>"; 
 }
 ?>
